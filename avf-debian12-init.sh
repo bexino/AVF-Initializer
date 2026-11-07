@@ -315,7 +315,6 @@ STEP='user-and-passwords'
 if ! id droid >/dev/null 2>&1; then run useradd -m -s /bin/bash droid; fi
 DHOME=$(getent passwd droid | cut -d: -f6)
 [[ $DHOME == /home/droid && ! -L $DHOME && $(id -u droid) != 0 ]] || { note 'Expected non-root droid with /home/droid'; exit 1; }
-getent group droid >/dev/null || { note 'Expected droid group for desktop service'; exit 1; }
 run usermod -aG sudo droid
 install -d -m 700 /var/lib/avf-init
 if [[ ! -e /var/lib/avf-init/passwords-configured ]] || (( RESET_PASSWORDS )); then
@@ -375,7 +374,6 @@ StartLimitBurst=3
 [Service]
 Type=simple
 User=droid
-Group=droid
 PAMName=login
 WorkingDirectory=/home/droid
 Environment=HOME=/home/droid LANG=zh_CN.UTF-8

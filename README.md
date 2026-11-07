@@ -2,29 +2,91 @@
 
 文件：`avf-debian12-init.sh`。它是 **Bash 脚本**，请用 `bash` 运行，不要用 `sh`。文件使用 LF 换行，无需 chmod。面向真实 Debian 12 ARM64、systemd 为 PID 1 的 AVF guest，不能用于 Android shell、Termux 或 PRoot。
 
-## 运行
+## 快速开始
 
-将脚本复制进 Debian guest 的 `/home/droid/`，在 AVF 本地终端中执行：
+全部命令都在 Debian 的 AVF 终端中执行，在线获取脚本，无需从电脑复制文件。每个示例都会重新下载、检查 Bash 语法，再运行；下载或语法检查失败时不会继续执行。请先将最新脚本提交到仓库，再运行这些命令。
+
+使用加速地址，先检测和预演：
 
 ```bash
-cd /home/droid
-bash avf-debian12-init.sh --help
-bash avf-debian12-init.sh --check
+cd ~ &&
+curl -fL --retry 3 'https://fast.bexino.dpdns.org/https://raw.githubusercontent.com/bexino/AVF-Initializer/main/avf-debian12-init.sh' -o avf-debian12-init.sh &&
+bash -n avf-debian12-init.sh &&
 bash avf-debian12-init.sh --dry-run
+```
+
+GitHub 官方直连地址（可替换下文所有加速地址）：
+
+```bash
+cd ~ &&
+curl -fL --retry 3 'https://raw.githubusercontent.com/bexino/AVF-Initializer/main/avf-debian12-init.sh' -o avf-debian12-init.sh &&
+bash -n avf-debian12-init.sh &&
+bash avf-debian12-init.sh --dry-run
+```
+
+正式初始化：
+
+```bash
+cd ~ &&
+curl -fL --retry 3 'https://fast.bexino.dpdns.org/https://raw.githubusercontent.com/bexino/AVF-Initializer/main/avf-debian12-init.sh' -o avf-debian12-init.sh &&
+bash -n avf-debian12-init.sh &&
 bash avf-debian12-init.sh
 ```
 
-检测和 dry-run 不提权、不修改系统设置，只创建私有临时报告。dry-run 是检测和计划展示，不模拟软件包依赖求解，不能保证正式安装必然成功。
+如果已经完成 Tailscale 登录，修复后继续初始化时可跳过登录交互：
+
+```bash
+cd ~ &&
+curl -fL --retry 3 'https://fast.bexino.dpdns.org/https://raw.githubusercontent.com/bexino/AVF-Initializer/main/avf-debian12-init.sh' -o avf-debian12-init.sh &&
+bash -n avf-debian12-init.sh &&
+bash avf-debian12-init.sh --skip-login
+```
+
+这里在线下载为实际文件后执行，以便脚本在需要 sudo 时可靠地重新读取自身。不要改成 `bash <(curl ...)`；该临时路径可能无法在提权后继续访问。
+
+### 可用参数
+
+```text
+--help                 帮助
+--check                只读诊断收集
+--dry-run              诊断和操作计划
+--skip-login           跳过 Tailscale 交互登录
+--reset-passwords      重新交互设置密码
+--rollback ID          恢复指定备份中的托管配置
+```
+
+在线获取并查看帮助：
+
+```bash
+cd ~ &&
+curl -fL --retry 3 'https://fast.bexino.dpdns.org/https://raw.githubusercontent.com/bexino/AVF-Initializer/main/avf-debian12-init.sh' -o avf-debian12-init.sh &&
+bash -n avf-debian12-init.sh &&
+bash avf-debian12-init.sh --help
+```
+
+在线获取并收集诊断：
+
+```bash
+cd ~ &&
+curl -fL --retry 3 'https://fast.bexino.dpdns.org/https://raw.githubusercontent.com/bexino/AVF-Initializer/main/avf-debian12-init.sh' -o avf-debian12-init.sh &&
+bash -n avf-debian12-init.sh &&
+bash avf-debian12-init.sh --check
+```
+
+`--check`和 `--dry-run` 不提权、不修改系统设置，只创建私有临时报告。dry-run 是检测和计划展示，不模拟软件包依赖求解，不能保证正式安装必然成功。
 
 正式运行时按需调用 sudo；没有 sudo 时，先在本地终端 `su -`，再运行脚本的完整路径。root、droid、VNC 密码分别通过原生密码程序交互输入，不作为参数或环境变量传递，不进入脚本日志。请勿在外面加 `bash -x`、`script` 会话录制或其他终端录屏/日志工具。
 
 第一次运行会要求设置 root/droid 密码，以及独立 VNC 密码。以后保留密码；主动重设用：
 
 ```bash
+cd ~ &&
+curl -fL --retry 3 'https://fast.bexino.dpdns.org/https://raw.githubusercontent.com/bexino/AVF-Initializer/main/avf-debian12-init.sh' -o avf-debian12-init.sh &&
+bash -n avf-debian12-init.sh &&
 bash avf-debian12-init.sh --reset-passwords
 ```
 
-已有 `droid` 必须是非 root、家目录 `/home/droid`，且存在 `droid` 组。不存在时创建。加入 sudo 组，使用系统原有 sudo 策略，不添加 NOPASSWD；现有 AVF 镜像若自带免密 sudo，本脚本不会擅自撤销。
+已有 `droid` 必须是非 root、家目录 `/home/droid`。不存在时创建。桌面服务使用用户实际主组，不要求存在同名组。加入 sudo 组，使用系统原有 sudo 策略，不添加 NOPASSWD；现有 AVF 镜像若自带免密 sudo，本脚本不会擅自撤销。
 
 需要可用网络、DNS、正确系统时间、Debian archive keyring、可用 HTTPS CA、`/dev/net/tun`，以及至少 4 GiB 可用磁盘空间。若基础 HTTPS/证书已损坏，脚本会停止并恢复本轮源配置，不会关闭证书或 APT 签名验证。请从可信镜像介质修复证书/时钟后重试。
 
@@ -94,14 +156,27 @@ AOSP Terminal 的 `ConfigJson.kt` 将 JSON 的 `memory_mib` 转成字节，调�
 首次 APT update 失败会自动恢复本轮已更改配置；后续失败停止并保留现场，因为软件包脚本、密码和 tailnet 登录不能安全假装具备事务回滚。修复网络/磁盘/锁或具体报错后可重复运行。需要配置回滚时，从 AVF 本地控制台执行：
 
 ```bash
-sudo bash /home/droid/avf-debian12-init.sh --rollback <退出时打印的备份ID>
+read -r -p "输入退出时打印的备份 ID: " backup_id &&
+cd ~ &&
+curl -fL --retry 3 'https://fast.bexino.dpdns.org/https://raw.githubusercontent.com/bexino/AVF-Initializer/main/avf-debian12-init.sh' -o avf-debian12-init.sh &&
+bash -n avf-debian12-init.sh &&
+bash avf-debian12-init.sh --rollback "$backup_id"
 ```
 
 回滚恢复本轮托管的源、APT 参数、locale、服务和会话脚本文件，以及原 VNC 服务的启用/活动状态；不卸载新软件包、不移除用户、不恢复旧密码、不重置 Tailscale 身份、偏好或服务状态、不恢复用户自己的 LXQt/VNC 文件，也不操作 Android 配置。回滚会停止当前 VNC，保存图形工作后再做。备份按“每次运行之前”的状态保存；重复运行后要回到最初状态，需要选最早的相应备份，且注意后续自行修改会被覆盖。
 
 ## 验证与实测边界
 
-脚本在安装后验证 systemd 单元、服务活动、包管理器、无 OpenSSH server、VNC 5901 回环监听以及 Tailscale DNS/SSH 的本地偏好。`--check` 只读收集诊断，不把未安装软件视作可用。
+脚本在安装后验证 systemd 单元、服务活动、包管理器、无 OpenSSH server、VNC 5901 回环监听以及 Tailscale DNS/SSH 的本地偏好。`--check` 只读收集诊断，不把未安装软件视作可用。完整的独立运行后检查也在线获取并执行：
+
+```bash
+cd ~ &&
+curl -fL --retry 3 'https://fast.bexino.dpdns.org/https://raw.githubusercontent.com/bexino/AVF-Initializer/main/avf-debian12-verify.sh' -o avf-debian12-verify.sh &&
+bash -n avf-debian12-verify.sh &&
+bash avf-debian12-verify.sh
+```
+
+检查器不安装、不修复、不重启服务，提供逐项 PASS/FAIL/WARN/PENDING，最后打印 `/tmp/avf-verify.XXXXXXXX/` 报告目录。`report.txt` 是逐项结果，`summary.txt` 是数量汇总；终端无法显示全部输出时，提供这两个文件的内容即可。退出码 0 表示本地检查通过（仍可有 PENDING）；1 表示有失败项；2 表示检查器未完整执行。详细说明见 [运行后检查说明](运行后检查说明.md)。
 
 交付检查见 `验证记录.md`。没有 Android 设备或 Debian ARM64 VM 的运行权限环境，因此不声称完成 AVF 实机安装、重启自启或远程端到端测试。启动成功只代表服务起来，不能替代你从第二台设备测试 SSH、VNC、中文输入，以及 Android 完全停止/重新启动 guest 后的验证。Debian 的“开机自启”不代表 Android 会自动启动或在后台永久维持 VM。
 
