@@ -1,196 +1,147 @@
-# Android AVF Debian 12 ARM64 初始化脚本
+# Android AVF Debian 13 初始化向导
 
-文件：`avf-debian12-init.sh`。它是 **Bash 脚本**，请用 `bash` 运行，不要用 `sh`。文件使用 LF 换行，无需 chmod。面向真实 Debian 12 ARM64、systemd 为 PID 1 的 AVF guest，不能用于 Android shell、Termux 或 PRoot。
+在 Android AVF 的 **Debian 13 ARM64 终端**中操作，要求 systemd 为 PID 1；不要在 Android shell、Termux 或 PRoot 中运行。准备可用网络、正确系统时间、至少 4 GiB 可用磁盘空间，以及可用的 sudo。
 
-## 快速开始
+**先将本地最新脚本提交并推送到远程仓库 `bexino/AVF-Initializer` 的 `main` 分支**，否则下列命令下载的仍是远程旧版本。脚本通常无法直接复制到手机，以下均在线下载为真实文件，检查 Bash 语法后执行；不要改成下载后直接管道执行。
 
-全部命令都在 Debian 的 AVF 终端中执行，在线获取脚本，无需从电脑复制文件。每个示例都会重新下载、检查 Bash 语法，再运行；下载或语法检查失败时不会继续执行。请先将最新脚本提交到仓库，再运行这些命令。
+需要权限的整行命令从 `sudo bash -c` 开始；无需权限的命令使用独立 Bash 并显式 `exit` 返回退出码，该 exit 仅结束新开的命令环境，不改变父终端权限。无 sudo 时先恢复可用的提权方式，再继续。
 
-使用加速地址，先检测和预演：
+## 一条命令完成两阶段设置
 
-```bash
-cd ~ &&
-curl -fL --retry 3 'https://fast.bexino.dpdns.org/https://raw.githubusercontent.com/bexino/AVF-Initializer/main/avf-debian12-init.sh' -o avf-debian12-init.sh &&
-bash -n avf-debian12-init.sh &&
-bash avf-debian12-init.sh --dry-run
-```
-
-GitHub 官方直连地址（可替换下文所有加速地址）：
+先将仓库最新内容提交并推送。以下命令先下载 `setup.sh` 为真实文件，检查语法后执行；`setup.sh` 再下载完整仓库归档，检查全部脚本语法。首次在 Debian 12 本地终端运行，完成交互升级后完全停止虚拟机并冷启动；第二次在 Debian 13 运行**同一条命令**，依次初始化、设置 root 和 droid 密码、安装桌面、Brave 和 Tailscale，最后检查。密码与 Tailscale 登录需在本地终端交互。失败后可修复原因再运行，但密码步骤会重新提示。内存调整不自动执行。
 
 ```bash
-cd ~ &&
-curl -fL --retry 3 'https://raw.githubusercontent.com/bexino/AVF-Initializer/main/avf-debian12-init.sh' -o avf-debian12-init.sh &&
-bash -n avf-debian12-init.sh &&
-bash avf-debian12-init.sh --dry-run
+sudo bash -c 'cd ~ && curl -fL --retry 3 https://fast.bexino.dpdns.org/https://raw.githubusercontent.com/bexino/AVF-Initializer/main/setup.sh -o setup.sh && bash -n setup.sh && bash setup.sh'
 ```
 
-正式初始化：
+以下分项命令供单独维护使用。Debian 13 初始化会替换活动软件源，务必在添加 Brave 和 Tailscale 软件源之前运行。
+
+## 1. 预演与安装
+
+先查看诊断和操作计划（只创建私有临时报告，不安装）：
 
 ```bash
-cd ~ &&
-curl -fL --retry 3 'https://fast.bexino.dpdns.org/https://raw.githubusercontent.com/bexino/AVF-Initializer/main/avf-debian12-init.sh' -o avf-debian12-init.sh &&
-bash -n avf-debian12-init.sh &&
-bash avf-debian12-init.sh
+sudo bash -c 'cd ~ && curl -fL --retry 3 https://fast.bexino.dpdns.org/https://raw.githubusercontent.com/bexino/AVF-Initializer/main/scripts/avf-debian13-init.sh -o avf-debian13-init.sh && bash -n avf-debian13-init.sh && bash avf-debian13-init.sh --dry-run'
 ```
 
-如果已经完成 Tailscale 登录，修复后继续初始化时可跳过登录交互：
+确认后正式初始化。初始化创建 droid 用户；请随后运行第 7 节密码脚本选择 `3` 设置两个密码。密码输入不显示，不要开启终端录制或执行跟踪。安装会替换现有活动 APT 源、安装基础命令工具。桌面与浏览器分别在后续步骤安装；重要配置请提前备份。
 
 ```bash
-cd ~ &&
-curl -fL --retry 3 'https://fast.bexino.dpdns.org/https://raw.githubusercontent.com/bexino/AVF-Initializer/main/avf-debian12-init.sh' -o avf-debian12-init.sh &&
-bash -n avf-debian12-init.sh &&
-bash avf-debian12-init.sh --skip-login
+sudo bash -c 'cd ~ && curl -fL --retry 3 https://fast.bexino.dpdns.org/https://raw.githubusercontent.com/bexino/AVF-Initializer/main/scripts/avf-debian13-init.sh -o avf-debian13-init.sh && bash -n avf-debian13-init.sh && bash avf-debian13-init.sh'
 ```
 
-这里在线下载为实际文件后执行，以便脚本在需要 sudo 时可靠地重新读取自身。不要改成 `bash <(curl ...)`；该临时路径可能无法在提权后继续访问。
+重复运行不修改已有密码。需要仅收集诊断时，将预演命令的 `--dry-run` 换为 `--check`；查看全部参数换为 `--help`。
 
-### 可用参数
+## 2. 安装桌面、中文与 VNC（可选）
 
-```text
---help                 帮助
---check                只读诊断收集
---dry-run              诊断和操作计划
---skip-login           跳过 Tailscale 交互登录
---reset-passwords      重新交互设置密码
---rollback ID          恢复指定备份中的托管配置
-```
-
-在线获取并查看帮助：
+完成基础初始化后执行。安装完整 `lxqt` 元包、中文字体，配置中文区域设置及仅监听回环地址的 VNC，不安装推荐包。首次运行按提示设置独立 VNC 密码；重复运行保留密码及已有桌面配置。
 
 ```bash
-cd ~ &&
-curl -fL --retry 3 'https://fast.bexino.dpdns.org/https://raw.githubusercontent.com/bexino/AVF-Initializer/main/avf-debian12-init.sh' -o avf-debian12-init.sh &&
-bash -n avf-debian12-init.sh &&
-bash avf-debian12-init.sh --help
+sudo bash -c 'cd ~ && curl -fL --retry 3 https://fast.bexino.dpdns.org/https://raw.githubusercontent.com/bexino/AVF-Initializer/main/scripts/avf-debian13-desktop.sh -o avf-debian13-desktop.sh && bash -n avf-debian13-desktop.sh && bash avf-debian13-desktop.sh'
 ```
 
-在线获取并收集诊断：
+需要预演时将末尾脚本参数加 `--dry-run`；仅重新设置 VNC 密码加 `--reset-passwords`。如果桌面正在运行，修改会话配置后保存工作，再执行 `sudo systemctl restart avf-vnc`，这会结束当前图形会话。
+
+## 3. 安装 Brave Origin（可选）
+
+添加 Brave 官方 APT 源及签名密钥，安装 `brave-origin`，不安装推荐包。安装不依赖桌面脚本；图形使用时先安装桌面，再以 droid 用户从菜单启动浏览器。
 
 ```bash
-cd ~ &&
-curl -fL --retry 3 'https://fast.bexino.dpdns.org/https://raw.githubusercontent.com/bexino/AVF-Initializer/main/avf-debian12-init.sh' -o avf-debian12-init.sh &&
-bash -n avf-debian12-init.sh &&
-bash avf-debian12-init.sh --check
+sudo bash -c 'cd ~ && curl -fL --retry 3 https://fast.bexino.dpdns.org/https://raw.githubusercontent.com/bexino/AVF-Initializer/main/scripts/avf-debian13-brave.sh -o avf-debian13-brave.sh && bash -n avf-debian13-brave.sh && bash avf-debian13-brave.sh'
 ```
 
-`--check`和 `--dry-run` 不提权、不修改系统设置，只创建私有临时报告。dry-run 是检测和计划展示，不模拟软件包依赖求解，不能保证正式安装必然成功。
+支持 `--dry-run` 和 `--check`。重新运行基础初始化会停用 Brave 软件源，需要重新运行此脚本恢复后续更新。
 
-正式运行时按需调用 sudo；没有 sudo 时，先在本地终端 `su -`，再运行脚本的完整路径。root、droid、VNC 密码分别通过原生密码程序交互输入，不作为参数或环境变量传递，不进入脚本日志。请勿在外面加 `bash -x`、`script` 会话录制或其他终端录屏/日志工具。
+## 4. 配置 Tailscale
 
-第一次运行会要求设置 root/droid 密码，以及独立 VNC 密码。以后保留密码；主动重设用：
+初始化完成后，在 AVF 本地终端运行下列命令并按提示登录。需要 `/dev/net/tun`；登录链接仅显示在终端，请勿分享。重新运行初始化会停用第三方软件源，之后需重新运行本脚本。
 
 ```bash
-cd ~ &&
-curl -fL --retry 3 'https://fast.bexino.dpdns.org/https://raw.githubusercontent.com/bexino/AVF-Initializer/main/avf-debian12-init.sh' -o avf-debian12-init.sh &&
-bash -n avf-debian12-init.sh &&
-bash avf-debian12-init.sh --reset-passwords
+sudo bash -c 'cd ~ && curl -fL --retry 3 https://fast.bexino.dpdns.org/https://raw.githubusercontent.com/bexino/AVF-Initializer/main/scripts/avf-debian13-tailscale.sh -o avf-debian13-tailscale.sh && bash -n avf-debian13-tailscale.sh && bash avf-debian13-tailscale.sh'
 ```
 
-### 单独重设 root 或 droid 密码
+已登录时可在命令末尾添加 `--skip-login`。登录成功仍需管理员配置访问策略并实际测试连接。
 
-独立脚本 `avf-debian12-reset-password.sh` 使用英文菜单：选择 `1` 重设 root 密码，选择 `2` 重设 user（droid）密码，选择 `0` 取消。只修改所选账号的本地密码，不运行初始化或修改 VNC 密码。需要 root 权限或可用的 sudo；droid 账号必须已存在。密码通过系统 `passwd` 在终端交互输入，输入时不显示，脚本不保存密码或生成日志。
+## 5. 检查安装结果
 
 ```bash
-cd ~ &&
-curl -fL --retry 3 'https://fast.bexino.dpdns.org/https://raw.githubusercontent.com/bexino/AVF-Initializer/main/avf-debian12-reset-password.sh' -o avf-debian12-reset-password.sh &&
-bash -n avf-debian12-reset-password.sh &&
-bash avf-debian12-reset-password.sh
+sudo bash -c 'cd ~ && curl -fL --retry 3 https://fast.bexino.dpdns.org/https://raw.githubusercontent.com/bexino/AVF-Initializer/main/scripts/avf-debian13-verify.sh -o avf-debian13-verify.sh && bash -n avf-debian13-verify.sh && bash avf-debian13-verify.sh'
 ```
 
-请先将新脚本提交到仓库，再执行上述在线下载命令；也可以将脚本保存到 guest 后直接用 Bash 运行。请勿使用 `bash -x` 或终端录制工具记录密码操作。
+检查器始终检查基础初始化，检测到桌面、Brave 或 Tailscale 安装痕迹时检查相应组件；未安装的可选组件会跳过。检查结束打印报告文件路径；排障时查看该文件。FAIL 需要处理，WARN 需要关注，PENDING 需要人工测试；本地检查通过不等于远程桌面已可用。
 
-已有 `droid` 必须是非 root、家目录 `/home/droid`。不存在时创建。桌面服务使用用户实际主组，不要求存在同名组。加入 sudo 组，使用系统原有 sudo 策略，不添加 NOPASSWD；现有 AVF 镜像若自带免密 sudo，本脚本不会擅自撤销。
+随后实际测试：以 droid 用户从桌面启动 Brave Origin、中文显示、另一台设备连接 SSH 和 VNC，以及完全停止虚拟机并冷启动后的桌面自启。Android 是否后台保持或自动启动 VM，由宿主决定。
 
-需要可用网络、DNS、正确系统时间、Debian archive keyring、可用 HTTPS CA、`/dev/net/tun`，以及至少 4 GiB 可用磁盘空间。若基础 HTTPS/证书已损坏，脚本会停止并恢复本轮源配置，不会关闭证书或 APT 签名验证。请从可信镜像介质修复证书/时钟后重试。
+## 6. 连接桌面
 
-## 具体行为
-
-- 备份并停用**全部现有活动 APT 源**，包含第三方源。新源固定 bookworm/bookworm-updates，使用 `mirror+file:/etc/apt/avf-mirrors.txt`；清华 priority 1，Debian priority 2。security 独立使用 Debian 官方 HTTPS URI。随后添加 Tailscale 官方源。必要的自定义源请审阅后自行恢复。
-- 先更新索引，再执行 dpkg configure、APT fix-broken 和 check。保留已有配置文件，禁止为依赖修复删除包；不删除锁文件、不杀包管理进程。遇锁超时后停止，待原任务结束再运行。
-- 安装基础命令、LXQt core、Openbox、TigerVNC、中文字体、zh_CN/en_US UTF-8、Fcitx5 中文组件；不拉取推荐包。不执行全系统升级、autoremove、分区调整或自动重启。需要时另行审阅 `sudo apt-get upgrade` 的变更。
-- 禁止 APT 安装 openssh-server。发现已安装、已解包或半配置的 OpenSSH server 时提前停止，避免在修复 dpkg 时配置它。必须从 AVF 本地终端自行确认并移除后重跑；不要在唯一远程连接里直接移除。OpenSSH client 不是 server，可用于其他机器连接本 VM。
-- 启动 tailscaled，设定 `--accept-dns=false --ssh=true`。不接受 DNS 接管，不改变已有出口节点等其他偏好。设置后读取本地选定字段进行验证，不保存完整 preferences/status。
-- 交互式 Tailscale 登录仅显示在终端，限时 300 秒；可用 `--skip-login` 跳过，稍后执行 `sudo tailscale login`。不接收 auth key 参数。未登录时报告待完成，不声称远程可用。
-- `avf-vnc.service` 在 Debian 开机后作为 droid 启动 `:1` 的 LXQt 会话；不安装显示管理器、不启用 root 图形登录。Openbox 仅为新的 LXQt 配置播种，保留已有用户桌面配置。
-- VNC 强制 localhost、VncAuth 和显式密码文件。验证 5901 的监听地址，发现非回环地址会停止服务。不开放公网/局域网 VNC。不修改防火墙、Android 电池策略或 host 网络。
-- 控制 journald 日志容量，默认分辨率 1280×800、24 位；保留现有 swap/zram 和内核资源参数，不重复叠加交换空间。Fcitx5 可在 LXQt 配置中选择拼音；若未自动启动，在 LXQt 会话设置中加入 `fcitx5 -d`。
-
-重复运行会重新验证软件包和托管配置，保留现有密码、账号和已运行的 VNC 会话。修改过服务/会话配置后，需要从本地终端执行 `sudo systemctl restart avf-vnc` 才应用到已有桌面；这会结束当前图形会话。
-
-## VNC 和 Tailscale SSH
-
-在 guest 内连接 `127.0.0.1:5901`。Android 上的 VNC 客户端不能假定 Android localhost 等于 guest localhost；若原生 Terminal 提供端口转发，可把 guest 5901 转发至 Android 本地端口，然后连接该端口，具体入口取决于系统版本。
-
-从另一台已加入同一 tailnet 的机器，使用已安装的 SSH 客户端：
+在同一 Tailscale 网络的另一台设备上，将下列 `VM-IP` 替换为虚拟机的 Tailscale IP。管理员需先允许对应的网络与 Tailscale SSH 访问规则。
 
 ```bash
-ssh -N -L 15901:127.0.0.1:5901 droid@<该VM的Tailscale-IP>
+bash -c 'ssh -N -L 15901:127.0.0.1:5901 droid@VM-IP; exit "$?"'
 ```
 
-保持连接，VNC 客户端连接本机 `127.0.0.1:15901`。此处 guest 的 SSH 由 tailscaled 提供，无需 OpenSSH server；转发能否使用还受 Tailscale 版本和 tailnet 策略约束。不要通过关闭 VNC 的 localhost 限制来绕过问题。也可用 `tailscale ssh droid@<VM-IP>` 做普通交互连接测试；它不是本说明的本地转发命令。
+保持连接，VNC 客户端连接本机 `127.0.0.1:15901`，输入独立 VNC 密码。若使用 Android 本机客户端，需要系统提供的端口转发功能；不能假定 Android 的 localhost 就是 guest 的 localhost。不要关闭 VNC 回环限制。
 
-管理员需要在 tailnet 策略中允许相应网络访问和 Tailscale SSH 用户/目标规则。启用 SSH 不等于授权已经完成。最终需从第二台设备实际连接验证。root/droid 本地密码不是 Tailscale SSH 的登录认证凭据。`accept-dns=false` 后优先使用 Tailscale IP，不假定 guest 的 MagicDNS 可解析。
+## 7. 重设密码
 
-## 将 AVF 内存调整到 8 GiB
-
-初始化脚本不调整宿主内存。独立脚本尝试将共享的 Terminal 宿主配置 `/mnt/internal/linux/vm_config.json` 中的 `memory_mib` 改为 **8192 MiB**，供下一次启动使用。AOSP Terminal 的配置会将此值传给宿主 AVF；具体设备的 launcher 是否使用该文件仍需实测。若 Android 设置提供内存选项，也可直接在设置中调整。
-
-1. 先备份重要 guest 数据，并确认虚拟机无法启动时能够从 Android 宿主恢复原配置；不要清除 Terminal 应用数据，否则可能丢失虚拟磁盘。确保手机有足够内存供 Android 和其他应用使用。
-2. 将 `avf-debian12-memory.sh` 下载为真实文件，在 guest 中先运行 `sudo bash avf-debian12-memory.sh --check`。检查共享配置是否可用。
-3. 运行 `sudo bash avf-debian12-memory.sh --apply`。脚本在 `/var/backups/avf-memory/` 创建私有原始备份，再仅修改 JSON 的 `memory_mib` 值；同时输出备份路径。请将该备份复制到 Android 或电脑上可访问的安全位置，以便虚拟机无法启动时恢复。
-4. 完全停止虚拟机并冷启动，再运行 `free -h` 和 `sudo bash avf-debian12-memory.sh --check`。配置为 8192 不代表已经生效；MemTotal 可能因保留内存或 balloon 小于 8 GiB。若仍约 4 GiB，说明当前 launcher 可能未使用该配置或覆盖了它。
-5. 若仍能进入 guest，可执行 `sudo bash avf-debian12-memory.sh --restore /var/backups/avf-memory/备份文件名` 恢复，并再次完全停止后启动；无法启动时须从宿主侧恢复原配置。
-
-脚本不能确认 launcher 行为、宿主可用内存或宿主恢复能力，也不会修改 swap 或关闭 balloon。不要同时启动两个使用同一可写磁盘的虚拟机。
-
-## 日志、失败与恢复
-
-每次运行建立 `/tmp/avf-init.XXXXXXXX/`（目录 0700，文件默认 0600），退出时打印路径，即便安装中断也保留。包含：
-
-- `steps.log`：步骤、警告、失败行号；命令参数不入日志。
-- `commands.log`：命令输出，经 URL、tskey、IPv4、邮箱和常见密钥字段的尽力脱敏。
-- `diagnostics.txt`：OS/内核、磁盘、内存、所需包版本、dpkg audit、相关服务状态、监听端口、TUN 检测。
-- `summary.txt`：退出码、最后步骤、警告数、备份位置。
-
-不抓取环境变量、完整进程参数、通用 journal、shadow、Tailscale 状态文件/密钥、VNC 密码文件、用户文档或完整宿主 JSON。密码和登录过程直接走 `/dev/tty`，避开日志管道。APT/dpkg 的第三方维护脚本仍可能输出任意文字，文本脱敏不能保证识别所有格式；对外分享前仍需审阅，尤其是主机标识、IPv6 和第三方错误信息。完整日志是指**本脚本所有非敏感步骤的输出和选定诊断**，不是无差别系统数据转储。
-
-正式运行的日志由 root 持有，例如 `sudo cat /tmp/avf-init.XXXXXXXX/summary.txt`。`/tmp` 在重启/清理后可能消失，需排障时及时保存到你控制的私有目录。
-
-每轮配置备份位于 `/var/backups/avf-init/<ID>/`（root 私有），与可分享日志分开。APT 原始配置可能带仓库凭据，**不要上传该备份目录**。
-
-首次 APT update 失败会自动恢复本轮已更改配置；后续失败停止并保留现场，因为软件包脚本、密码和 tailnet 登录不能安全假装具备事务回滚。修复网络/磁盘/锁或具体报错后可重复运行。需要配置回滚时，从 AVF 本地控制台执行：
+设置本地密码：下载运行后选择 `1`（root）、`2`（droid）或 `3`（两个都设置），选择 `0` 取消。此操作不修改 VNC 密码。
 
 ```bash
-read -r -p "输入退出时打印的备份 ID: " backup_id &&
-cd ~ &&
-curl -fL --retry 3 'https://fast.bexino.dpdns.org/https://raw.githubusercontent.com/bexino/AVF-Initializer/main/avf-debian12-init.sh' -o avf-debian12-init.sh &&
-bash -n avf-debian12-init.sh &&
-bash avf-debian12-init.sh --rollback "$backup_id"
+sudo bash -c 'cd ~ && curl -fL --retry 3 https://fast.bexino.dpdns.org/https://raw.githubusercontent.com/bexino/AVF-Initializer/main/scripts/avf-debian13-reset-password.sh -o avf-debian13-reset-password.sh && bash -n avf-debian13-reset-password.sh && bash avf-debian13-reset-password.sh'
 ```
 
-回滚恢复本轮托管的源、APT 参数、locale、服务和会话脚本文件，以及原 VNC 服务的启用/活动状态；不卸载新软件包、不移除用户、不恢复旧密码、不重置 Tailscale 身份、偏好或服务状态、不恢复用户自己的 LXQt/VNC 文件，也不操作 Android 配置。回滚会停止当前 VNC，保存图形工作后再做。备份按“每次运行之前”的状态保存；重复运行后要回到最初状态，需要选最早的相应备份，且注意后续自行修改会被覆盖。
+如需重新设置 VNC 密码，在桌面安装命令末尾加 `--reset-passwords`。初始化器不再设置本地密码；`setup.sh` 会自动调用密码脚本的 `--both` 模式。
 
-## 验证与实测边界
+## 8. 可选：将宿主内存配置改为 8 GiB
 
-脚本在安装后验证 systemd 单元、服务活动、包管理器、无 OpenSSH server、VNC 5901 回环监听以及 Tailscale DNS/SSH 的本地偏好。`--check` 只读收集诊断，不把未安装软件视作可用。完整的独立运行后检查也在线获取并执行：
+先备份重要数据，确认 Android 有足够内存，并且虚拟机无法启动时能从宿主恢复配置。不要清除 Terminal 应用数据。先检查共享配置：
 
 ```bash
-cd ~ &&
-curl -fL --retry 3 'https://fast.bexino.dpdns.org/https://raw.githubusercontent.com/bexino/AVF-Initializer/main/avf-debian12-verify.sh' -o avf-debian12-verify.sh &&
-bash -n avf-debian12-verify.sh &&
-bash avf-debian12-verify.sh
+sudo bash -c 'cd ~ && curl -fL --retry 3 https://fast.bexino.dpdns.org/https://raw.githubusercontent.com/bexino/AVF-Initializer/main/scripts/avf-debian13-memory.sh -o avf-debian13-memory.sh && bash -n avf-debian13-memory.sh && bash avf-debian13-memory.sh --check'
 ```
 
-检查器不安装、不修复、不重启服务，提供逐项 PASS/FAIL/WARN/PENDING，最后打印 `/tmp/avf-verify.XXXXXXXX/` 报告目录。`report.txt` 是逐项结果，`summary.txt` 是数量汇总；终端无法显示全部输出时，提供这两个文件的内容即可。退出码 0 表示本地检查通过（仍可有 PENDING）；1 表示有失败项；2 表示检查器未完整执行。详细说明见 [运行后检查说明](运行后检查说明.md)。
+确认能够恢复后应用：
 
-交付检查见 `验证记录.md`。没有 Android 设备或 Debian ARM64 VM 的运行权限环境，因此不声称完成 AVF 实机安装、重启自启或远程端到端测试。启动成功只代表服务起来，不能替代你从第二台设备测试 SSH、VNC、中文输入，以及 Android 完全停止/重新启动 guest 后的验证。Debian 的“开机自启”不代表 Android 会自动启动或在后台永久维持 VM。
+```bash
+sudo bash -c 'cd ~ && curl -fL --retry 3 https://fast.bexino.dpdns.org/https://raw.githubusercontent.com/bexino/AVF-Initializer/main/scripts/avf-debian13-memory.sh -o avf-debian13-memory.sh && bash -n avf-debian13-memory.sh && bash avf-debian13-memory.sh --apply'
+```
 
-## 依据（核实日期：2026-11-07）
+保存输出的备份路径，并将备份另存到 Android 或电脑可访问的安全位置。完全停止 VM 后冷启动，再运行上面的检查命令，比较配置值与实际内存；配置为 8192 MiB 不代表 launcher 已采用。
 
-- [Debian bookworm apt-transport-mirror](https://manpages.debian.org/bookworm/apt/apt-transport-mirror.1.en.html)：失败切换；数字更小优先；无 priority 时随机选择。
-- [Tailscale Debian bookworm 官方软件源](https://pkgs.tailscale.com/stable/#debian-bookworm)。
-- [Tailscale DNS 客户端偏好](https://tailscale.com/docs/features/client/manage-preferences)、[Tailscale SSH 和访问策略](https://tailscale.com/docs/features/tailscale-ssh)。
-- [Debian TigerVNC server 手册](https://manpages.debian.org/bookworm/tigervnc-standalone-server/tigervncserver.1.en.html)：foreground、localhost、密码文件、xstartup。
-- [AOSP ConfigJson.kt](https://android.googlesource.com/platform/packages/modules/Virtualization/+/refs/heads/main/android/TerminalApp/java/com/android/virtualization/terminal/ConfigJson.kt)：memory_mib 与宿主 API。
-- [AOSP InstalledImage.kt 固定修订](https://android.googlesource.com/platform/packages/modules/Virtualization/+/dd12ec774f09365d4f898c7739b23356e35198cc/android/TerminalApp/java/com/android/virtualization/terminal/InstalledImage.kt)：应用私有 files/linux 的配置位置。
-- [AOSP 自定义 VM 文档](https://android.googlesource.com/platform/packages/modules/Virtualization/+/refs/heads/main/docs/custom_vm.md)：需要对应权限/宿主支持的自定义 VM 启动能力，不等于所有零售 Terminal 都提供设置入口。
+若仍能进入 guest，输入先前输出的备份完整路径进行恢复，再完全停止并冷启动；无法进入时从宿主侧恢复。
+
+```bash
+sudo bash -c 'cd ~ && read -r -p "内存备份完整路径: " backup && bash -n avf-debian13-memory.sh && bash avf-debian13-memory.sh --restore "$backup"'
+```
+
+## 9. 升级到 Debian 13
+
+升级前必须先完整备份虚拟机及重要数据，确认能从宿主恢复，并阅读 [Debian 13 升级说明](https://www.debian.org/releases/trixie/release-notes/upgrading.en.html)。确认网络、时间和 sudo 可用，处理 dpkg 未完成状态和锁定的软件包，预留充足磁盘空间，使用 AVF 本地终端，避免升级中远程连接断开。脚本先更新 Debian 12，再切换官方软件源并交互升级；请审阅软件包删除清单和配置提示。第三方源（包括 Tailscale）会停用，升级后需自行确认 Debian 13 兼容性并配置，否则这些软件不会从原第三方源更新。
+
+```bash
+sudo bash -c 'cd ~ && curl -fL --retry 3 https://fast.bexino.dpdns.org/https://raw.githubusercontent.com/bexino/AVF-Initializer/main/scripts/debian12-upgrade.sh -o debian12-upgrade.sh && bash -n debian12-upgrade.sh && bash debian12-upgrade.sh'
+```
+
+保存输出的软件源备份路径；备份可能包含凭据，不要上传。升级成功后完全停止并冷启动虚拟机，检查系统版本、桌面、VNC 回环监听和 Tailscale 连接。升级失败时保留现场并根据错误修复；切换软件源后的软件包变更不能通过恢复旧源撤销。冷启动后，可按需执行第 1 至 8 节的 Debian 13 脚本；重新配置 Brave 和 Tailscale 源后再检查。初始化会替换源，不是升级后的必需步骤。
+
+## 10. 失败与恢复
+
+调试文件统一保存在 `/tmp/avf-debug/`，文件名为脚本完整文件名加 `.txt`，例如 `/tmp/avf-debug/avf-debian13-init.sh.txt`；同一脚本再次运行会覆盖旧文件。请按本向导统一使用 sudo，以便使用同一个私有目录。查看示例：`sudo cat /tmp/avf-debug/avf-debian13-init.sh.txt`。部分脚本仅记录退出状态，具体错误请查看终端输出。安装失败时保存退出时打印的报告路径；报告位于 `/tmp`，可能在重启或清理后消失。先处理报告中的网络、磁盘、包管理锁或具体错误，再重新运行安装。不要删除锁文件。对外分享报告前检查敏感内容，不要上传 `/var/backups/avf-init/` 原始备份。
+
+不要在 Debian 13 上恢复升级前的 Debian 12 初始化备份，以免恢复旧软件源。需要恢复本版本初始化前的托管配置时，先保存桌面工作，从 AVF 本地终端执行下列命令，并输入退出时打印的备份 ID。新版本基础备份不涉及桌面；恢复旧版本包含桌面的备份时会停止当前 VNC。回滚不撤销软件包安装、账号、密码或 Tailscale 身份。
+
+```bash
+sudo bash -c 'read -r -p "初始化备份 ID: " backup_id && cd ~ && curl -fL --retry 3 https://fast.bexino.dpdns.org/https://raw.githubusercontent.com/bexino/AVF-Initializer/main/scripts/avf-debian13-init.sh -o avf-debian13-init.sh && bash -n avf-debian13-init.sh && bash avf-debian13-init.sh --rollback "$backup_id"'
+```
+
+桌面和 Brave 各自使用独立备份 ID。如需恢复，分别重新下载对应脚本后执行：桌面回滚会停止当前 VNC，请先保存工作。
+
+```bash
+sudo bash -c 'read -r -p "桌面备份 ID: " backup_id && cd ~ && curl -fL --retry 3 https://fast.bexino.dpdns.org/https://raw.githubusercontent.com/bexino/AVF-Initializer/main/scripts/avf-debian13-desktop.sh -o avf-debian13-desktop.sh && bash -n avf-debian13-desktop.sh && bash avf-debian13-desktop.sh --rollback "$backup_id"'
+```
+
+```bash
+sudo bash -c 'read -r -p "Brave 备份 ID: " backup_id && cd ~ && curl -fL --retry 3 https://fast.bexino.dpdns.org/https://raw.githubusercontent.com/bexino/AVF-Initializer/main/scripts/avf-debian13-brave.sh -o avf-debian13-brave.sh && bash -n avf-debian13-brave.sh && bash avf-debian13-brave.sh --rollback "$backup_id"'
+```
+
+实现、安全约束、日志及回滚范围见 [技术规范](docs/spec.md)。

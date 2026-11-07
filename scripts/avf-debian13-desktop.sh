@@ -1,5 +1,5 @@
 #!/bin/bash
-# Android AVF Debian 12 ARM64 bootstrap. Run with bash, not POSIX sh.
+# Android AVF Debian 13 ARM64 optional component installer. Run with bash, not POSIX sh.
 set +x
 set -Eeuo pipefail
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
@@ -7,20 +7,18 @@ umask 077
 MODE=apply
 ORIGINAL_ARGS=("$@")
 RESET_PASSWORDS=0
-LOGIN=1
 ROLLBACK_ID=
 usage() {
 cat <<'EOF'
-Usage: bash avf-debian12-init.sh [options]
+Usage: bash avf-debian13-desktop.sh [options]
   --help                 Show help; no changes
   --check                Read-only guest diagnostics (writes only private temp logs)
   --dry-run              Same diagnostics plus proposed plan; no sudo/install/change
-  --skip-login           Do not start interactive Tailscale enrollment
-  --reset-passwords      Prompt again for root/droid/VNC passwords
-  --rollback ID          Restore managed configuration from /var/backups/avf-init/ID
-Defaults: prompt for passwords once, localhost-only VNC :1, zh_CN.UTF-8.
+  --reset-passwords      Prompt again for VNC password
+  --rollback ID          Restore managed configuration from /var/backups/avf-desktop/ID
+Defaults: prompt for VNC password once, localhost-only VNC :1, zh_CN.UTF-8.
 No OpenSSH server installation. No automatic Android host memory changes.
-Interactive secrets and Tailscale enrollment bypass all script log capture.
+Interactive secrets bypass all script log capture.
 Rollback restores configuration, not packages, accounts, passwords or tailnet state.
 EOF
 }
@@ -29,7 +27,6 @@ while (($#)); do
   --help|-h) usage; exit 0;;
   --check) MODE=check;;
   --dry-run) MODE=dry-run;;
-  --skip-login) LOGIN=0;;
   --reset-passwords) RESET_PASSWORDS=1;;
   --rollback) shift; ROLLBACK_ID=${1:?Missing backup ID}; MODE=rollback;;
   *) printf 'Unknown option: %s\n' "$1" >&2; exit 2;;
@@ -40,12 +37,18 @@ if [[ $MODE == apply || $MODE == rollback ]] && ((EUID != 0)); then
  command -v sudo >/dev/null || { echo 'Run from a root shell (su -), or install/configure sudo first.' >&2; exit 1; }
  exec sudo -- /bin/bash "$(readlink -f -- "$0")" "${ORIGINAL_ARGS[@]}"
 fi
-LOGDIR=$(mktemp -d /tmp/avf-init.XXXXXXXX)
-chmod 700 "$LOGDIR"
+LOGDIR=/tmp/avf-debug
+mkdir -p -- "$LOGDIR"
+[[ -d $LOGDIR && ! -L $LOGDIR && -O $LOGDIR ]] || { echo "Debug directory must be owned by the current user: $LOGDIR" >&2; exit 1; }
+chmod 700 -- "$LOGDIR"
+LOGFILE="$LOGDIR/${0##*/}.txt"
+[[ ! -L $LOGFILE ]] || { echo 'Refusing symlink debug file' >&2; exit 1; }
+: > "$LOGFILE"
+chmod 600 -- "$LOGFILE"
 STEP=preflight
 BACKUP=
 WARNINGS=0
-note() { printf '%s [%s] %s\n' "$(date -Is)" "$STEP" "$*" | tee -a "$LOGDIR/steps.log"; }
+note() { printf '%s [%s] %s\n' "$(date -Is)" "$STEP" "$*" | tee -a "$LOGFILE"; }
 warn() { WARNINGS=$((WARNINGS+1)); note "WARNING: $*"; }
 # Best-effort redaction, plus strict collection minimization. No environment,
 # process command lines, shadow, tailscaled.state, VNC files or general journal.
@@ -60,13 +63,13 @@ redact() {
 run() {
  local rc=0
  note "Running: $1" # only executable name; never log arguments
- "$@" 2>&1 | redact | tee -a "$LOGDIR/commands.log" || rc=$?
+ "$@" 2>&1 | redact | tee -a "$LOGFILE" || rc=$?
  return "$rc"
 }
 probe() {
  local label=$1; shift
- printf '\n### %s\n' "$label" >> "$LOGDIR/diagnostics.txt"
- "$@" 2>&1 | redact >> "$LOGDIR/diagnostics.txt" || true
+ printf '\n### %s\n' "$label" >> "$LOGFILE"
+ "$@" 2>&1 | redact >> "$LOGFILE" || true
 }
 diagnostics() {
  probe os cat /etc/os-release
@@ -76,10 +79,9 @@ diagnostics() {
  probe inode df -i /
  probe dpkg-audit dpkg --audit
  # shellcheck disable=SC2016 # dpkg-query format, not shell variables
- probe packages dpkg-query -W '-f=${Package} ${Version} ${db:Status-Status}\n' tailscale openssh-server lxqt-core openbox tigervnc-standalone-server
- probe units systemctl show tailscaled.service avf-vnc.service -p Id -p ActiveState -p SubState -p UnitFileState -p Result -p ExecMainStatus
+ probe packages dpkg-query -W '-f=${Package} ${Version} ${db:Status-Status}\n' lxqt openbox tigervnc-standalone-server
+ probe units systemctl show avf-vnc.service -p Id -p ActiveState -p SubState -p UnitFileState -p Result -p ExecMainStatus
  probe listeners ss -lnt
- probe tun stat -c '%F %a' /dev/net/tun
  probe failed-unit-count systemctl --failed --no-legend --no-pager
 }
 finish() {
@@ -92,8 +94,8 @@ finish() {
   echo "warnings=$WARNINGS"
   echo "config_backup=${BACKUP:-none}"
   echo 'Debug capture deliberately excludes interactive secrets, enrollment URLs and raw journals.'
- } > "$LOGDIR/summary.txt"
- printf '\nExit=%s; diagnostics/logs: %s\n' "$rc" "$LOGDIR"
+ } >> "$LOGFILE"
+ printf '\nExit=%s; diagnostics/logs: %s\n' "$rc" "$LOGFILE"
  [[ -z $BACKUP ]] || printf 'Private configuration backup: %s\n' "$BACKUP"
 }
 trap finish EXIT
@@ -104,22 +106,22 @@ if [[ $MODE == check || $MODE == dry-run ]]; then
  diagnostics
  note 'Detection only. No system configuration changes or privilege escalation.'
  if [[ $MODE == dry-run ]]; then
-  note 'Plan: preflight; config backup; replace active APT sources; repair dpkg/APT; install tools/desktop/Tailscale; passwords; locale; private VNC systemd; verify.'
-  note 'Apply needs Debian 12 arm64, systemd PID1, console TTY, network, /dev/net/tun and >=4 GiB free disk.'
+  note 'Plan: preflight; require initialized droid user; config backup; update APT; install LXQt without recommends; VNC password; Chinese locale/fonts; private VNC systemd; verify.'
+  note 'Apply needs Debian 13 arm64, systemd PID1, console TTY, network and >=4 GiB free disk.'
  fi
  exit 0
 fi
 [[ -r /etc/os-release ]] || { note 'Missing os-release'; exit 1; }
 # shellcheck source=/dev/null
 . /etc/os-release
-[[ ${ID:-} == debian && ${VERSION_ID:-} == 12 && $(dpkg --print-architecture) == arm64 ]] || { note 'Requires Debian 12 arm64'; exit 1; }
+[[ ${ID:-} == debian && ${VERSION_ID:-} == 13 && $(dpkg --print-architecture) == arm64 ]] || { note 'Requires Debian 13 arm64'; exit 1; }
 [[ $(cat /proc/1/comm) == systemd ]] || { note 'Requires systemd as PID1'; exit 1; }
 exec 9>/run/avf-init.lock
 flock -n 9 || { note 'Another initialization is running'; exit 1; }
-BASE=/var/backups/avf-init
+BASE=/var/backups/avf-desktop
 allowed_path() {
  case $1 in
-  /etc/apt/*|/usr/share/keyrings/tailscale-archive-keyring.gpg|/etc/locale.gen|/etc/default/locale|/etc/systemd/system/avf-vnc.service|/etc/systemd/journald.conf.d/90-avf-init.conf|/usr/local/libexec/avf-lxqt-session|/var/lib/avf-init/passwords-configured) return 0;;
+  /etc/locale.gen|/etc/default/locale|/etc/systemd/system/avf-vnc.service|/usr/local/libexec/avf-lxqt-session) return 0;;
   *) return 1;;
  esac
 }
@@ -128,7 +130,7 @@ restore() {
  [[ -f $src/manifest ]] || { note 'Backup manifest missing'; return 1; }
  systemctl stop avf-vnc.service || true
  while IFS=$'\t' read -r existed p; do
-  allowed_path "$p" && [[ $p != *..* ]] || { note 'Invalid manifest path'; return 1; }
+  if ! allowed_path "$p" || [[ $p == *..* ]]; then note 'Invalid manifest path'; return 1; fi
   if [[ $existed == yes ]]; then
    mkdir -p -- "$(dirname -- "$p")"
    cp -a --remove-destination -- "$src/files$p" "$p"
@@ -148,16 +150,12 @@ if [[ $MODE == rollback ]]; then
  run restore "$BACKUP"
  exit 0
 fi
-[[ -c /dev/net/tun ]] || { note '/dev/net/tun missing: need host/kernel TUN support for Tailscale SSH'; exit 1; }
 if [[ ! -r /dev/tty || ! -w /dev/tty ]] || ! ( : </dev/tty ) 2>/dev/null; then
  note 'Apply requires an interactive terminal'; exit 1
 fi
 (( $(df -Pk / | awk 'END {print $4}') >= 4194304 )) || { note 'Need >=4 GiB free disk'; exit 1; }
-ssh_status=$(dpkg-query -W '-f=${db:Status-Status}' openssh-server 2>/dev/null || true)
-if [[ -n $ssh_status && $ssh_status != not-installed && $ssh_status != config-files ]]; then
- note 'Existing openssh-server detected. Remove it explicitly from the AVF console first; this script refuses to configure it or interrupt existing remote access.'
- exit 1
-fi
+DHOME=$(getent passwd droid | cut -d: -f6 || true)
+[[ $DHOME == /home/droid && ! -L $DHOME && $(id -u droid) != 0 ]] || { note 'Run base initialization first: expected non-root droid with /home/droid'; exit 1; }
 diagnostics
 STEP=backup
 install -d -m 700 "$BASE"
@@ -185,97 +183,13 @@ write_file() {
  chmod 644 "$t"
  mv -fT -- "$t" "$p"
 }
-STEP=apt-sources
-# Disable ALL active lists, including third-party sources, to make the Debian
-# repair reproducible. Preserve originals in private backup; never log contents.
-shopt -s nullglob
-for f in /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do
- [[ -e $f || -L $f ]] || continue
- save "$f"
- rm -f -- "$f"
-done
-write_file /etc/apt/avf-mirrors.txt <<'EOF'
-https://mirrors.tuna.tsinghua.edu.cn/debian/	priority:1
-https://deb.debian.org/debian/	priority:2
-EOF
-write_file /etc/apt/sources.list.d/00-avf-debian.sources <<'EOF'
-Types: deb
-URIs: mirror+file:/etc/apt/avf-mirrors.txt
-Suites: bookworm bookworm-updates
-Components: main contrib non-free non-free-firmware
-Architectures: arm64
-Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
-
-Types: deb
-URIs: https://security.debian.org/debian-security
-Suites: bookworm-security
-Components: main contrib non-free non-free-firmware
-Architectures: arm64
-Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
-EOF
-write_file /etc/apt/apt.conf.d/90-avf-init <<'EOF'
-Acquire::Retries "3";
-Acquire::http::Timeout "30";
-Acquire::https::Timeout "30";
-DPkg::Lock::Timeout "120";
-APT::Install-Recommends "false";
-EOF
-write_file /etc/apt/preferences.d/90-avf-no-openssh-server <<'EOF'
-Package: openssh-server
-Pin: version *
-Pin-Priority: -1
-EOF
-APT=(apt-get -o DPkg::Lock::Timeout=120 -o Dpkg::Options::=--force-confold)
+APT=(apt-get --no-install-recommends -o DPkg::Lock::Timeout=120 -o Dpkg::Options::=--force-confold)
 export DEBIAN_FRONTEND=noninteractive
-if ! run "${APT[@]}" -o APT::Update::Error-Mode=any update; then
- warn 'APT update failed; restoring this run configuration automatically.'
- run restore "$BACKUP"
- exit 1
-fi
-STEP=repair
-# Never delete lock files; dpkg itself reports a busy database.
-if ! run dpkg --force-confold --configure -a; then warn 'Initial dpkg configure failed; trying dependency repair'; fi
-run "${APT[@]}" --no-remove -y --fix-broken install
-run dpkg --force-confold --configure -a
-run "${APT[@]}" check
 STEP=packages
-run "${APT[@]}" --no-remove -y install ca-certificates debian-archive-keyring curl gnupg sudo \
- locales fonts-noto-cjk fonts-noto-color-emoji fcitx5 fcitx5-chinese-addons fcitx5-frontend-qt5 \
- lxqt-core openbox dbus-x11 xauth x11-xserver-utils tigervnc-standalone-server tigervnc-tools \
- qterminal pcmanfm-qt htop procps iproute2 iputils-ping dnsutils less nano vim-tiny \
- git rsync unzip zip tar lsof logrotate python3
-STEP=tailscale
-keytmp=$(mktemp "$LOGDIR/key.XXXXXX")
-run curl --proto '=https' --tlsv1.2 -fSL --connect-timeout 20 --max-time 120 \
- -o "$keytmp" https://pkgs.tailscale.com/stable/debian/bookworm.noarmor.gpg
-gpg --batch --show-keys "$keytmp" >/dev/null 2>&1 || { note 'Invalid Tailscale signing key'; exit 1; }
-write_file /usr/share/keyrings/tailscale-archive-keyring.gpg < "$keytmp"
-rm -f "$keytmp"
-write_file /etc/apt/sources.list.d/tailscale.list <<'EOF'
-deb [arch=arm64 signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg] https://pkgs.tailscale.com/stable/debian bookworm main
-EOF
 run "${APT[@]}" -o APT::Update::Error-Mode=any update
-run "${APT[@]}" --no-remove -y install tailscale
-run systemctl enable --now tailscaled.service
-run tailscale set --accept-dns=false --ssh=true
-if (( LOGIN )); then
- note 'Tailscale login (console only; URL/output not captured). Ctrl-C cancels. Never paste an auth key into this script.'
- if ! timeout --foreground 300 tailscale login </dev/tty >/dev/tty 2>&1; then warn 'Tailscale enrollment incomplete; later run sudo tailscale login'; fi
-fi
-STEP='user-and-passwords'
-if ! id droid >/dev/null 2>&1; then run useradd -m -s /bin/bash droid; fi
-DHOME=$(getent passwd droid | cut -d: -f6)
-[[ $DHOME == /home/droid && ! -L $DHOME && $(id -u droid) != 0 ]] || { note 'Expected non-root droid with /home/droid'; exit 1; }
-run usermod -aG sudo droid
-install -d -m 700 /var/lib/avf-init
-if [[ ! -e /var/lib/avf-init/passwords-configured ]] || (( RESET_PASSWORDS )); then
- for user in root droid; do
-  note "Set $user password on console (not logged)."
-  passwd "$user" </dev/tty >/dev/tty 2>&1
- done
- save /var/lib/avf-init/passwords-configured
- touch /var/lib/avf-init/passwords-configured
-fi
+run "${APT[@]}" --no-remove -y install locales fonts-noto-cjk fonts-noto-color-emoji \
+ lxqt openbox dbus-x11 xauth \
+ x11-xserver-utils tigervnc-standalone-server tigervnc-tools qterminal pcmanfm-qt iproute2
 # Do not follow user-provided .vnc links as root.
 [[ ! -L $DHOME/.vnc ]] || { note 'Refusing symlink .vnc directory'; exit 1; }
 run runuser -u droid -- mkdir -p "$DHOME/.vnc"
@@ -292,13 +206,6 @@ if ! grep -Eq '^en_US.UTF-8[[:space:]]+UTF-8' /etc/locale.gen; then echo 'en_US.
 run locale-gen
 save /etc/default/locale
 run update-locale LANG=zh_CN.UTF-8
-write_file /etc/systemd/journald.conf.d/90-avf-init.conf <<'EOF'
-[Journal]
-SystemMaxUse=128M
-RuntimeMaxUse=32M
-EOF
-run systemctl restart systemd-journald
-# No guessed swap/zram sizes or global kernel tuning. Keep guest/host defaults.
 STEP=desktop
 # This is a public executable directory, unlike private logs/backups. mkdir -p
 # under umask 077 would otherwise create it as 0700 on minimal AVF images.
@@ -309,7 +216,6 @@ set -eu
 unset SESSION_MANAGER DBUS_SESSION_BUS_ADDRESS
 export LANG=zh_CN.UTF-8
 export XDG_SESSION_TYPE=x11 XDG_CURRENT_DESKTOP=LXQt
-export QT_IM_MODULE=fcitx GTK_IM_MODULE=fcitx XMODIFIERS=@im=fcitx
 # Keep droid's own LXQt configuration; seed Openbox on a fresh profile.
 mkdir -p "$HOME/.config/lxqt"
 if [[ ! -e $HOME/.config/lxqt/session.conf ]]; then
@@ -352,7 +258,7 @@ run systemctl reset-failed avf-vnc.service
 if ! systemctl is-active --quiet avf-vnc.service; then run systemctl start avf-vnc.service; fi
 STEP=verification
 sleep 5
-run systemctl is-active tailscaled.service avf-vnc.service
+run systemctl is-active avf-vnc.service
 run "${APT[@]}" check
 run dpkg --audit
 [[ -z $(dpkg --audit) ]] || { note 'dpkg audit non-empty'; exit 1; }
@@ -363,15 +269,6 @@ if printf '%s\n' "$listeners" | awk '{print $4}' | grep -Evq '^(127\.0\.0\.1:590
  systemctl stop avf-vnc.service
  note 'Unsafe VNC bind detected; stopped VNC'; exit 1
 fi
-# Inspect selected local preferences/status only; never save full status JSON.
-if ! tailscale debug prefs 2>/dev/null | python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(not(d.get("CorpDNS") is False and d.get("RunSSH") is True))'; then
- note 'Tailscale DNS/SSH preference verification failed'; exit 1
-fi
-if ! tailscale status --json 2>/dev/null | python3 -c 'import json,sys; sys.exit(json.load(sys.stdin).get("BackendState")!="Running")'; then
- warn 'Tailscale not Running: enrollment or network action still required. SSH reachability is not verified.'
-fi
 diagnostics
-note 'Completed. VNC: guest localhost:5901. Tailnet SSH requires admin access/SSH policy and an external connection test.'
-note 'For remote VNC, use a Tailscale SSH local tunnel; no OpenSSH server required. See README.'
-note 'Other active APT sources were disabled and backed up. No full upgrade/autoremove/reboot performed.'
-note 'If configuration changes are needed, stop avf-vnc first; rerunning keeps an already running desktop.'
+note 'Desktop completed. VNC: guest localhost:5901. See README for SSH tunneling.'
+note 'Rerunning keeps an already running desktop. Restart avf-vnc explicitly to apply session changes.'

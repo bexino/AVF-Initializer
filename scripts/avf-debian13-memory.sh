@@ -3,11 +3,26 @@
 set +x
 set -Eeuo pipefail
 umask 077
+LOGDIR=/tmp/avf-debug
+mkdir -p -- "$LOGDIR"
+[[ -d $LOGDIR && ! -L $LOGDIR && -O $LOGDIR ]] || { echo "Debug directory must be owned by the current user: $LOGDIR" >&2; exit 1; }
+chmod 700 -- "$LOGDIR"
+LOGFILE="$LOGDIR/${0##*/}.txt"
+[[ ! -L $LOGFILE ]] || { echo 'Refusing symlink debug file' >&2; exit 1; }
+: > "$LOGFILE"
+chmod 600 -- "$LOGFILE"
+finish_debug() {
+ local rc=$?
+ trap - EXIT
+ printf 'exit_code=%s\n' "$rc" >> "$LOGFILE"
+ printf 'Debug file: %s\n' "$LOGFILE" >&2
+}
+trap finish_debug EXIT
 config=/mnt/internal/linux/vm_config.json
 backup_dir=/var/backups/avf-memory
 usage() {
  cat <<'EOF'
-Usage: sudo bash avf-debian12-memory.sh --check | --apply | --restore BACKUP
+Usage: sudo bash avf-debian13-memory.sh --check | --apply | --restore BACKUP
 --check: show guest memory and the candidate host allocation.
 --apply: back up the candidate configuration and set memory_mib to 8192.
 --restore: restore a backup created by this script.

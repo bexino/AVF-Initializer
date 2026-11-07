@@ -1,30 +1,11 @@
-# Repository Guidelines
+# 项目协作约束
 
-## Project Structure
-
-This repository provisions a Debian 12 ARM64 guest running under Android AVF. The root contains `avf-debian12-init.sh` (initialization), `avf-debian12-verify.sh` (post-install checks), and `avf-debian12-reset-password.sh` (interactive password reset). `README.md` documents installation and options; `运行后检查说明.md` and `验证记录.md` describe verification. `docs/HANDOFF.md` records operational context. There is no separate source, asset, or automated test directory.
-
-## Development and Verification
-
-Run scripts with Bash, using real files and LF line endings. On a machine with Bash, check syntax before submitting changes:
-
-```bash
-bash -n avf-debian12-init.sh avf-debian12-verify.sh avf-debian12-reset-password.sh
-shellcheck avf-debian12-init.sh avf-debian12-verify.sh avf-debian12-reset-password.sh
-```
-
-ShellCheck is an optional local tool. On a real Debian 12 ARM64 AVF guest with systemd, use `bash avf-debian12-init.sh --check` for diagnostics or `--dry-run` for the proposed plan. Both write private temporary reports but do not perform installation. After initialization, run `sudo bash avf-debian12-verify.sh`; its local checks do not replace manual connection, desktop, and reboot testing. The initializer without these flags changes the guest system.
-
-## Style and Testing
-
-Follow the existing Bash style: `#!/bin/bash`, strict error handling, quoted expansions, descriptive lowercase function names, and uppercase configuration variables. Preserve the surrounding indentation and keep embedded Python consistent with its existing four-space indentation. Name additional scripts `avf-debian12-<purpose>.sh`. Update the Chinese user documentation when commands or behavior change.
-
-No coverage threshold or standalone test framework is configured. Check syntax and relevant safe modes for each change; exercise system-changing behavior only in a suitable test guest. Describe which checks were run and which require real-device validation.
-
-## Commits and Pull Requests
-
-Recent commits use concise Chinese summaries describing the change; follow that pattern and keep each commit focused. Pull requests should explain the problem and behavior, list verification results and remaining manual checks, and link relevant issues. Include screenshots when documentation or visible desktop behavior changes.
-
-## Security and Configuration
-
-Keep VNC bound to localhost and preserve private report and backup permissions. Never log passwords, keys, or Tailscale enrollment links; avoid `bash -x` during secret entry. Preserve the documented download-to-file workflow because privilege escalation must be able to reread the script. Do not push changes without the repository owner’s instruction.
+- 若无特别说明，一切回复使用简体中文；本文件全文使用中文并保持精简。
+- 本项目为安卓虚拟化框架下的 Debian 12 ARM64 客体提供初始化、运行后检查、密码重设和内存配置脚本。README.md 只写教程与向导；必要技术细节写入 docs/spec.md，无必要的历史叙述删除。docs/HANDOFF.md 是可有可无的上个对话交接文件，不作为必需文档。
+- Linux 命令尽量拼接为一整行，用 && 连接依赖步骤。需要提权时，在整行开头明确通过 sudo 进入执行环境，即使此前已处于管理员环境也不省略；无需提权时加一层带 exit 的独立命令环境，保留退出码。exit 退出哪一层必须说明，不得暗示它自动降低父终端权限。
+- 用户通常无法复制脚本文件：README.md 必须提供在线下载为真实文件、检查语法再执行的命令，并提示先提交到远程仓库。不得用下载管道或进程替换直接执行脚本。
+- 仓库为 bexino/AVF-Initializer。GitHub 地址默认使用 https://fast.bexino.dpdns.org/ 加完整原地址（含原路径和扩展名）；脚本下载必须使用原始文件地址，不能下载网页内容冒充脚本。
+- 脚本使用 Bash、严格错误处理、引用变量展开、描述性小写函数名和大写配置变量，保留现有缩进；内嵌 Python 使用四空格。文件使用 UTF-8、LF 换行。
+- 修改后检查所有脚本的 Bash 语法，可用时运行 ShellCheck；相关安全模式按需检查，系统变更仅在合适的真实测试客体中验证。明确报告已运行检查与实机待验证项。
+- 保持 VNC 仅监听回环地址，保留报告与备份的私有权限。不得记录密码、密钥或 Tailscale 登录链接；秘密输入时禁用执行跟踪。不得删除包管理锁或关闭证书与签名验证。
+- 提交使用简洁中文摘要并保持单一主题；拉取请求说明行为、验证和待人工检查项。未经仓库所有者明确指示，不推送远程；文档中的提醒不构成推送授权。
