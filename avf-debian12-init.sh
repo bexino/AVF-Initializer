@@ -68,53 +68,6 @@ probe() {
  printf '\n### %s\n' "$label" >> "$LOGDIR/diagnostics.txt"
  "$@" 2>&1 | redact >> "$LOGDIR/diagnostics.txt" || true
 }
-memory_report() {
- local kb
- kb=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)
- awk -v k="$kb" 'BEGIN {printf "Guest MemTotal: %.3f GiB; target host allocation: 7168 MiB (7.0 GiB).\n",k/1048576}' | tee "$LOGDIR/memory.txt"
- for f in /sys/fs/cgroup/memory.max /sys/fs/cgroup/memory/memory.limit_in_bytes; do
-  if [[ -r $f ]]; then printf '%s: %s\n' "$f" "$(cat "$f")" >> "$LOGDIR/memory.txt"; fi
- done
- if command -v python3 >/dev/null; then
-  python3 - <<'PY' >> "$LOGDIR/memory.txt"
-import json, os
-for p in ('/mnt/internal/linux/vm_config.json', '/mnt/internal/vm_config.json'):
-    if not os.path.isfile(p):
-        print(p + ': not visible'); continue
-    try:
-        with open(p) as f: d=json.load(f)
-        print(p + ': memory_mib=' + str(d.get('memory_mib', 'missing')) +
-              '; auto_memory_balloon=' + str(d.get('auto_memory_balloon', 'missing')) +
-              '; writable=' + str(os.access(p, os.W_OK)))
-    except (OSError, ValueError): print(p + ': unreadable or invalid JSON')
-PY
- else
-  echo 'python3 absent: shared host JSON parsing not performed.' >> "$LOGDIR/memory.txt"
- fi
- cat >> "$LOGDIR/memory.txt" <<'EOF'
-Host capability verdict: UNKNOWN. Guest cannot establish Android version,
-launcher behavior, host free RAM, permissions or whether this JSON is consumed.
-No RAM change attempted. Shared JSON, if visible, is HOST configuration, not
-a guest memory control. MemAvailable is workload-dependent, not a RAM ceiling.
-Host action: stop the VM fully, use a launcher RAM setting if offered (7168 MiB),
-or identify the actual launcher-consumed vm_config.json and back it up before
-changing ONLY memory_mib to 7168. A rooted/custom AVF launcher can consume JSON
-using setMemoryBytes; retail Terminal builds vary and may override configuration.
-Do not assume /sdcard/linux/vm_config.json or an adb settings key is supported.
-If shared /mnt/internal/linux/vm_config.json is present, verify launcher/build
-support and arrange host-side restore before editing it. Recovering a failed VM
-may require Android root; never clear Terminal app data as a recovery shortcut.
-On an Android ADB host, read-only evidence: adb shell getprop ro.build.fingerprint;
-adb shell pm list packages; adb shell cat /proc/meminfo;
-adb shell /apex/com.android.virt/bin/vm help
-For custom/rooted VMs: inspect vm run help and the actual launch JSON; preserve
-all disk/kernel paths. Do not start a second VM on the same writable disk.
-Cold-start after changing host configuration; rerun --check. MemTotal can be
-slightly below 7 GiB due to reserved memory; ballooning can lower current RAM.
-If no supported UI/config access exists, this build cannot be adjusted by this
-guest script. Keep current RAM or use a supported host build/launcher.
-EOF
-}
 diagnostics() {
  probe os cat /etc/os-release
  probe kernel uname -srmo
@@ -128,7 +81,6 @@ diagnostics() {
  probe listeners ss -lnt
  probe tun stat -c '%F %a' /dev/net/tun
  probe failed-unit-count systemctl --failed --no-legend --no-pager
- memory_report
 }
 finish() {
  local rc=$?
@@ -139,7 +91,6 @@ finish() {
   echo "last_step=$STEP"
   echo "warnings=$WARNINGS"
   echo "config_backup=${BACKUP:-none}"
-  echo 'memory_target=host action required; see memory.txt'
   echo 'Debug capture deliberately excludes interactive secrets, enrollment URLs and raw journals.'
  } > "$LOGDIR/summary.txt"
  printf '\nExit=%s; diagnostics/logs: %s\n' "$rc" "$LOGDIR"
@@ -420,7 +371,6 @@ if ! tailscale status --json 2>/dev/null | python3 -c 'import json,sys; sys.exit
  warn 'Tailscale not Running: enrollment or network action still required. SSH reachability is not verified.'
 fi
 diagnostics
-warn '7 GiB host allocation is not changed or verified by guest; consult memory.txt.'
 note 'Completed. VNC: guest localhost:5901. Tailnet SSH requires admin access/SSH policy and an external connection test.'
 note 'For remote VNC, use a Tailscale SSH local tunnel; no OpenSSH server required. See README.'
 note 'Other active APT sources were disabled and backed up. No full upgrade/autoremove/reboot performed.'

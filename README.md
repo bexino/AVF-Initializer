@@ -131,24 +131,17 @@ ssh -N -L 15901:127.0.0.1:5901 droid@<该VM的Tailscale-IP>
 
 管理员需要在 tailnet 策略中允许相应网络访问和 Tailscale SSH 用户/目标规则。启用 SSH 不等于授权已经完成。最终需从第二台设备实际连接验证。root/droid 本地密码不是 Tailscale SSH 的登录认证凭据。`accept-dns=false` 后优先使用 Tailscale IP，不假定 guest 的 MagicDNS 可解析。
 
-## 7.0 GiB：宿主侧能力与操作
+## 将 AVF 内存调整到 8 GiB
 
-**目标值是 `memory_mib: 7168`（7.0 GiB 分配上限），不是保证始终存在 7.0 GiB 的 MemAvailable。** guest 的 `/proc/meminfo` 反映当前可见内存，可能受保留区域和 balloon 影响；cgroup 限额又是另一层限制。脚本不使用 ulimit、swap、内核参数或 guest 限额冒充增加物理 RAM。
+初始化脚本不调整宿主内存。独立脚本尝试将共享的 Terminal 宿主配置 `/mnt/internal/linux/vm_config.json` 中的 `memory_mib` 改为 **8192 MiB**，供下一次启动使用。AOSP Terminal 的配置会将此值传给宿主 AVF；具体设备的 launcher 是否使用该文件仍需实测。若 Android 设置提供内存选项，也可直接在设置中调整。
 
-AOSP Terminal 的 `ConfigJson.kt` 将 JSON 的 `memory_mib` 转成字节，调用宿主 API `setMemoryBytes`。`InstalledImage.kt` 中配置位于应用私有 files/linux/vm_config.json。部分版本把应用 files 目录共享为 `/mnt/internal`，因此 guest 中可见的 `/mnt/internal/linux/vm_config.json` 可能就是**宿主文件的共享入口**，写它也是改宿主的下一次启动配置，不会立即增加当前 guest RAM。零售系统、厂商分支和更新版本可能不同。
+1. 先备份重要 guest 数据，并确认虚拟机无法启动时能够从 Android 宿主恢复原配置；不要清除 Terminal 应用数据，否则可能丢失虚拟磁盘。确保手机有足够内存供 Android 和其他应用使用。
+2. 将 `avf-debian12-memory.sh` 下载为真实文件，在 guest 中先运行 `sudo bash avf-debian12-memory.sh --check`。检查共享配置是否可用。
+3. 运行 `sudo bash avf-debian12-memory.sh --apply`。脚本在 `/var/backups/avf-memory/` 创建私有原始备份，再仅修改 JSON 的 `memory_mib` 值；同时输出备份路径。请将该备份复制到 Android 或电脑上可访问的安全位置，以便虚拟机无法启动时恢复。
+4. 完全停止虚拟机并冷启动，再运行 `free -h` 和 `sudo bash avf-debian12-memory.sh --check`。配置为 8192 不代表已经生效；MemTotal 可能因保留内存或 balloon 小于 8 GiB。若仍约 4 GiB，说明当前 launcher 可能未使用该配置或覆盖了它。
+5. 若仍能进入 guest，可执行 `sudo bash avf-debian12-memory.sh --restore /var/backups/avf-memory/备份文件名` 恢复，并再次完全停止后启动；无法启动时须从宿主侧恢复原配置。
 
-脚本检测两处候选 JSON，只输出 `memory_mib`、balloon 字段、可读性和当前权限，不打印完整 JSON。它无法从 guest 确认 Android launcher 是否使用该文件、Android 当前空闲 RAM或真正可恢复的权限，因此将宿主能力准确标为 UNKNOWN，不自动编辑。此工作环境没有连接用户手机，不能伪造设备实测结论。
-
-操作路径：
-
-1. 若 Android Linux/Terminal 设置有明确的 RAM 选项，选择 **7168 MiB**，完全停止 VM 后重新启动。
-2. 若没有 UI，先在电脑 ADB 侧收集只读信息：`adb shell getprop ro.build.fingerprint`、`adb shell pm list packages`、`adb shell cat /proc/meminfo`、`adb shell /apex/com.android.virt/bin/vm help`。它们只供你本地识别系统版本、应用包名、宿主资源及 CLI；不要未经脱敏上传完整输出。普通 ADB shell 通常读不到应用私有文件，`adb root` 也不保证零售设备可用。
-3. 对已确认支持自定义配置的 Terminal/AVF launcher，识别**实际使用**的 JSON，完整备份原文件和重要 guest 数据到 Android/电脑，并确认关机后能从宿主恢复原配置。不要把 `/sdcard/linux/vm_config.json` 当作所有版本通用入口，也没有在这里使用未经证实的 `settings put` 属性。
-4. 将该 JSON 的 `memory_mib` 单个字段改为整数 `7168`，其他字段完整保留。若仅能在 guest 通过共享入口编辑，则只能在运行中准备下一次启动配置；先确认宿主侧恢复通道，再编辑并正常关闭 guest。宿主可直接访问时，先完全停止 VM 再改。不要在运行中的磁盘上启动第二个 VM。
-5. 重新冷启动 VM，运行本脚本 `--check`，比较 memory.txt 的配置和 MemTotal。实际 MemTotal 可以略小于 7 GiB，balloon 还可能降低当前值。Android 必须为自身和其他应用保留足够 RAM；能否分配由宿主硬件/内存压力决定，不可只看手机标称总内存。
-6. 若 VM 起不来，从宿主恢复原 JSON，再冷启动。不要清除 Terminal 应用数据，这可能删除虚拟磁盘。没有受支持设置/配置权限或恢复通道时，保留原内存，使用受支持的宿主构建/launcher；guest 脚本无法兑现 7 GiB。
-
-不自动关闭 balloon，也不承诺宿主持续保留所有分配页。
+脚本不能确认 launcher 行为、宿主可用内存或宿主恢复能力，也不会修改 swap 或关闭 balloon。不要同时启动两个使用同一可写磁盘的虚拟机。
 
 ## 日志、失败与恢复
 
@@ -157,7 +150,6 @@ AOSP Terminal 的 `ConfigJson.kt` 将 JSON 的 `memory_mib` 转成字节，调�
 - `steps.log`：步骤、警告、失败行号；命令参数不入日志。
 - `commands.log`：命令输出，经 URL、tskey、IPv4、邮箱和常见密钥字段的尽力脱敏。
 - `diagnostics.txt`：OS/内核、磁盘、内存、所需包版本、dpkg audit、相关服务状态、监听端口、TUN 检测。
-- `memory.txt`：内存与宿主配置检测、宿主操作建议。
 - `summary.txt`：退出码、最后步骤、警告数、备份位置。
 
 不抓取环境变量、完整进程参数、通用 journal、shadow、Tailscale 状态文件/密钥、VNC 密码文件、用户文档或完整宿主 JSON。密码和登录过程直接走 `/dev/tty`，避开日志管道。APT/dpkg 的第三方维护脚本仍可能输出任意文字，文本脱敏不能保证识别所有格式；对外分享前仍需审阅，尤其是主机标识、IPv6 和第三方错误信息。完整日志是指**本脚本所有非敏感步骤的输出和选定诊断**，不是无差别系统数据转储。

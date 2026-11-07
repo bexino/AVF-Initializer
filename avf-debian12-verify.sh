@@ -164,8 +164,8 @@ logrotate python3 tailscale'''.split()
     mem = re.search(r'^MemTotal:\s+(\d+)', text('/proc/meminfo'), re.M)
     if mem:
         gib = int(mem[1]) / 1048576
-        emit('INFO', f'guest MemTotal={gib:.3f} GiB；宿主目标分配 7168 MiB')
-        emit('PENDING', '7 GiB 宿主分配尚未证实；MemTotal 和 guest 限额不能证明宿主配置已生效')
+        emit('INFO', f'guest MemTotal={gib:.3f} GiB；宿主目标分配 8192 MiB')
+        emit('PENDING', '8 GiB 宿主分配尚未证实；MemTotal 和 guest 限额不能证明宿主配置已生效')
     else: emit('WARN', '无法读取 guest MemTotal')
     # Never display whole host JSON.
     for p in ('/mnt/internal/linux/vm_config.json', '/mnt/internal/vm_config.json'):
