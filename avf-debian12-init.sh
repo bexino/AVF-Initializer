@@ -349,6 +349,9 @@ EOF
 run systemctl restart systemd-journald
 # No guessed swap/zram sizes or global kernel tuning. Keep guest/host defaults.
 STEP=desktop
+# This is a public executable directory, unlike private logs/backups. mkdir -p
+# under umask 077 would otherwise create it as 0700 on minimal AVF images.
+install -d -m 755 /usr/local/libexec
 write_file /usr/local/libexec/avf-lxqt-session <<'EOF'
 #!/bin/bash
 set -eu
@@ -364,6 +367,7 @@ fi
 exec dbus-run-session -- startlxqt
 EOF
 chmod 755 /usr/local/libexec/avf-lxqt-session
+run runuser -u droid -- test -x /usr/local/libexec/avf-lxqt-session
 write_file /etc/systemd/system/avf-vnc.service <<'EOF'
 [Unit]
 Description=Private droid TigerVNC LXQt desktop (:1)
@@ -393,6 +397,7 @@ EOF
 run systemctl daemon-reload
 run systemd-analyze verify /etc/systemd/system/avf-vnc.service
 run systemctl enable avf-vnc.service
+run systemctl reset-failed avf-vnc.service
 if ! systemctl is-active --quiet avf-vnc.service; then run systemctl start avf-vnc.service; fi
 STEP=verification
 sleep 5

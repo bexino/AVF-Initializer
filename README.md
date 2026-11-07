@@ -86,6 +86,19 @@ bash -n avf-debian12-init.sh &&
 bash avf-debian12-init.sh --reset-passwords
 ```
 
+### 单独重设 root 或 droid 密码
+
+独立脚本 `avf-debian12-reset-password.sh` 使用英文菜单：选择 `1` 重设 root 密码，选择 `2` 重设 user（droid）密码，选择 `0` 取消。只修改所选账号的本地密码，不运行初始化或修改 VNC 密码。需要 root 权限或可用的 sudo；droid 账号必须已存在。密码通过系统 `passwd` 在终端交互输入，输入时不显示，脚本不保存密码或生成日志。
+
+```bash
+cd ~ &&
+curl -fL --retry 3 'https://fast.bexino.dpdns.org/https://raw.githubusercontent.com/bexino/AVF-Initializer/main/avf-debian12-reset-password.sh' -o avf-debian12-reset-password.sh &&
+bash -n avf-debian12-reset-password.sh &&
+bash avf-debian12-reset-password.sh
+```
+
+请先将新脚本提交到仓库，再执行上述在线下载命令；也可以将脚本保存到 guest 后直接用 Bash 运行。请勿使用 `bash -x` 或终端录制工具记录密码操作。
+
 已有 `droid` 必须是非 root、家目录 `/home/droid`。不存在时创建。桌面服务使用用户实际主组，不要求存在同名组。加入 sudo 组，使用系统原有 sudo 策略，不添加 NOPASSWD；现有 AVF 镜像若自带免密 sudo，本脚本不会擅自撤销。
 
 需要可用网络、DNS、正确系统时间、Debian archive keyring、可用 HTTPS CA、`/dev/net/tun`，以及至少 4 GiB 可用磁盘空间。若基础 HTTPS/证书已损坏，脚本会停止并恢复本轮源配置，不会关闭证书或 APT 签名验证。请从可信镜像介质修复证书/时钟后重试。

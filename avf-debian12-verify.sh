@@ -134,7 +134,9 @@ logrotate python3 tailscale'''.split()
     check(bool(re.search(r'^LANG=["\x27]?zh_CN\.UTF-8', text('/etc/default/locale'), re.M)), '默认 LANG 为 zh_CN.UTF-8')
     session = text('/usr/local/libexec/avf-lxqt-session')
     check('dbus-run-session -- startlxqt' in session and 'QT_IM_MODULE=fcitx' in session
-          and os.access('/usr/local/libexec/avf-lxqt-session', os.X_OK), '托管 LXQt 会话脚本与输入法环境')
+          and cmd('runuser', '-u', 'droid', '--', 'test', '-r', '/usr/local/libexec/avf-lxqt-session')[0] == 0
+          and cmd('runuser', '-u', 'droid', '--', 'test', '-x', '/usr/local/libexec/avf-lxqt-session')[0] == 0,
+          '托管 LXQt 会话脚本与输入法环境，且 droid 可读取/执行（含父目录权限）')
     for unit in ('tailscaled.service', 'avf-vnc.service'):
         check(cmd('systemctl', 'is-enabled', unit)[1].strip() == 'enabled', unit + ' 已启用开机启动')
         props = properties(unit)
