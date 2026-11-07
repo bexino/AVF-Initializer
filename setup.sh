@@ -35,8 +35,24 @@ for SCRIPT in "$REPO"/scripts/*.sh; do bash -n "$SCRIPT"; done
 if [[ $VERSION_ID == 12 ]]; then
  echo 'Debian 12: upgrade begins. Keep this terminal open and review APT prompts.'
  bash "$REPO/scripts/debian12-upgrade.sh"
+ # A cancelled or failed upgrade must never be reported as complete.
+ # shellcheck source=/dev/null
+ . /etc/os-release
+ [[ ${ID:-} == debian && ${VERSION_ID:-} == 13 ]] || {
+  echo 'Upgrade did not reach Debian 13. Do not reboot for the next setup stage.' >&2
+  exit 1
+ }
+ install -d -m 700 /var/lib/avf-setup
+ cat /proc/sys/kernel/random/boot_id > /var/lib/avf-setup/upgrade-boot-id
+ chmod 600 /var/lib/avf-setup/upgrade-boot-id
  echo 'Upgrade finished. Fully stop the VM, cold start it, then run the same setup command again.'
  exit 0
+fi
+
+if [[ -f /var/lib/avf-setup/upgrade-boot-id ]] &&
+   [[ $(cat /var/lib/avf-setup/upgrade-boot-id) == $(cat /proc/sys/kernel/random/boot_id) ]]; then
+ echo 'Debian 13 packages are installed, but the VM has not restarted. Fully stop and cold start it first.' >&2
+ exit 1
 fi
 
 echo 'Debian 13: initializing base system and accounts.'

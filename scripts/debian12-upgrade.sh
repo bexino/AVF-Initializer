@@ -49,7 +49,7 @@ echo 'Back up the entire VM and verify recovery before continuing.'
 echo 'Third-party APT sources will be disabled; package changes cannot be rolled back by restoring sources.'
 echo 'Review APT package removals and configuration prompts. Do not interrupt the upgrade.'
 read -r -p 'Type UPGRADE to continue: ' ANSWER
-[[ $ANSWER == UPGRADE ]] || { echo 'Cancelled.'; exit 0; }
+[[ $ANSWER == UPGRADE ]] || { echo 'Cancelled; no upgrade was started.'; exit 3; }
 APT=(apt-get -o DPkg::Lock::Timeout=120)
 echo 'Updating Debian 12 packages. Review each APT prompt.'
 "${APT[@]}" -o APT::Update::Error-Mode=any update
